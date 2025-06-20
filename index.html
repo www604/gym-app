@@ -592,30 +592,6 @@
         
         <div class="content-wrapper">
             <div id="log" class="content active">
-                <div class="form-section" style="background: #1a3a1a; border-color: #2d5a2d;">
-                    <div class="form-section-title">
-                        <span>➕</span>
-                        <span>Add Custom Exercise</span>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Exercise Name</label>
-                        <input type="text" class="form-input" id="customExerciseName" placeholder="Enter exercise name">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Muscle Group</label>
-                        <select class="form-select" id="customMuscleGroup">
-                            <option value="">Select muscle group</option>
-                            <option value="chest">Chest</option>
-                            <option value="back">Back</option>
-                            <option value="shoulders">Shoulders</option>
-                            <option value="legs">Legs</option>
-                            <option value="arms">Arms</option>
-                            <option value="core">Core</option>
-                        </select>
-                    </div>
-                    <button class="button-primary" onclick="addCustomExercise()" style="background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);">Add Exercise</button>
-                </div>
-                
                 <div class="form-section">
                     <div class="form-section-title">
                         <span>🏋️</span>
@@ -655,6 +631,27 @@
                 </div>
                 
                 <div id="todayExercises"></div>
+                
+                <div class="form-section" style="background: rgba(76, 175, 80, 0.1); border-color: rgba(76, 175, 80, 0.3); margin-top: 20px;">
+                    <details>
+                        <summary style="cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">
+                            ➕ Add Custom Exercise
+                        </summary>
+                        <div style="display: grid; gap: 10px; margin-top: 12px;">
+                            <input type="text" class="form-input" id="customExerciseName" placeholder="Exercise name" style="min-height: 40px; font-size: 15px;">
+                            <select class="form-select" id="customMuscleGroup" style="min-height: 40px; font-size: 15px;">
+                                <option value="">Select muscle group</option>
+                                <option value="chest">Chest</option>
+                                <option value="back">Back</option>
+                                <option value="shoulders">Shoulders</option>
+                                <option value="legs">Legs</option>
+                                <option value="arms">Arms</option>
+                                <option value="core">Core</option>
+                            </select>
+                            <button class="button-primary" id="addCustomBtn" style="background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%); min-height: 40px; font-size: 15px;">Add Exercise</button>
+                        </div>
+                    </details>
+                </div>
             </div>
             
             <div id="history" class="content">
@@ -757,6 +754,21 @@
             core: ['Plank', 'Crunches', 'Russian Twists', 'Leg Raises', 'Ab Wheel']
         };
 
+        // Load custom exercises from localStorage
+        let customExercises = JSON.parse(localStorage.getItem('customExercises')) || {};
+        
+        // Merge custom exercises with default database
+        function getMergedExercises() {
+            const merged = JSON.parse(JSON.stringify(exerciseDatabase));
+            Object.keys(customExercises).forEach(muscle => {
+                if (!merged[muscle]) {
+                    merged[muscle] = [];
+                }
+                merged[muscle] = [...customExercises[muscle], ...merged[muscle]];
+            });
+            return merged;
+        }
+
         // Global state
         let workouts = JSON.parse(localStorage.getItem('workouts')) || [];
         let currentSession = null;
@@ -845,13 +857,53 @@
             exerciseSelect.disabled = false;
             exerciseSelect.innerHTML = '<option value="">Select exercise</option>';
             
-            const exercises = exerciseDatabase[muscleGroup] || [];
+            const mergedExercises = getMergedExercises();
+            const exercises = mergedExercises[muscleGroup] || [];
             exercises.forEach(exercise => {
                 const option = document.createElement('option');
                 option.value = exercise;
                 option.textContent = exercise;
                 exerciseSelect.appendChild(option);
             });
+        }
+
+        function addCustomExercise() {
+            const name = document.getElementById('customExerciseName').value.trim();
+            const muscle = document.getElementById('customMuscleGroup').value;
+            
+            if (!name || !muscle) {
+                showNotification('Please enter exercise name and select muscle group', 'error');
+                return;
+            }
+            
+            // Initialize custom exercises for this muscle group if needed
+            if (!customExercises[muscle]) {
+                customExercises[muscle] = [];
+            }
+            
+            // Check if exercise already exists
+            const mergedExercises = getMergedExercises();
+            if (mergedExercises[muscle].includes(name)) {
+                showNotification('This exercise already exists', 'error');
+                return;
+            }
+            
+            // Add the exercise
+            customExercises[muscle].push(name);
+            
+            // Save to localStorage
+            localStorage.setItem('customExercises', JSON.stringify(customExercises));
+            
+            // Clear form
+            document.getElementById('customExerciseName').value = '';
+            document.getElementById('customMuscleGroup').value = '';
+            
+            // Update exercise list if same muscle group is selected
+            if (document.getElementById('muscleGroup').value === muscle) {
+                updateExerciseList();
+            }
+            
+            showNotification(`Added "${name}" to ${muscle} exercises!`);
         }
 
         function selectSets(num) {
@@ -1341,9 +1393,10 @@
             setTimeout(() => notification.remove(), 3000);
         }
 
-        // Make deleteExercise global
+        // Make deleteExercise and other functions global
         window.deleteExercise = deleteExercise;
         window.toggleRestTimer = toggleRestTimer;
+        window.addCustomExercise = addCustomExercise;
     </script>
 </body>
 </html>
