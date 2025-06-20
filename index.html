@@ -194,7 +194,7 @@
             right: 0;
             bottom: 0;
             overflow-y: auto;
-            padding: 12px 12px calc(var(--safe-area-bottom) + 12px);
+            padding: 12px 12px 80px;
             display: none;
             -webkit-overflow-scrolling: touch;
         }
@@ -592,6 +592,30 @@
         
         <div class="content-wrapper">
             <div id="log" class="content active">
+                <div class="form-section" style="background: #1a3a1a; border-color: #2d5a2d;">
+                    <div class="form-section-title">
+                        <span>➕</span>
+                        <span>Add Custom Exercise</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Exercise Name</label>
+                        <input type="text" class="form-input" id="customExerciseName" placeholder="Enter exercise name">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Muscle Group</label>
+                        <select class="form-select" id="customMuscleGroup">
+                            <option value="">Select muscle group</option>
+                            <option value="chest">Chest</option>
+                            <option value="back">Back</option>
+                            <option value="shoulders">Shoulders</option>
+                            <option value="legs">Legs</option>
+                            <option value="arms">Arms</option>
+                            <option value="core">Core</option>
+                        </select>
+                    </div>
+                    <button class="button-primary" onclick="addCustomExercise()" style="background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);">Add Exercise</button>
+                </div>
+                
                 <div class="form-section">
                     <div class="form-section-title">
                         <span>🏋️</span>
