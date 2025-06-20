@@ -1341,7 +1341,8 @@
             }
             
             let html = '';
-            workouts.slice().reverse().forEach(workout => {
+            workouts.slice().reverse().forEach((workout, workoutIndex) => {
+                const actualIndex = workouts.length - 1 - workoutIndex;
                 const totalVolume = workout.exercises.reduce((sum, exercise) => {
                     return sum + exercise.sets.reduce((eSum, set) => eSum + (set.weight * set.reps), 0);
                 }, 0);
@@ -1352,20 +1353,25 @@
                 
                 html += `
                     <div class="session-card">
-                        <div style="margin-bottom: 12px;">
-                            <div class="session-date">
-                                ${workout.date}
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                            <div>
+                                <div class="session-date">
+                                    ${workout.date}
+                                </div>
+                                <div class="session-meta">
+                                    <span>🕐 ${workout.startTime}</span>
+                                    <span>⏱️ ${duration}</span>
+                                    <span>💪 ${workout.exercises.length}</span>
+                                    <span>📊 ${totalVolume.toLocaleString()}</span>
+                                </div>
                             </div>
-                            <div class="session-meta">
-                                <span>🕐 ${workout.startTime}</span>
-                                <span>⏱️ ${duration}</span>
-                                <span>💪 ${workout.exercises.length}</span>
-                                <span>📊 ${totalVolume.toLocaleString()}</span>
-                            </div>
+                            <button class="delete-button" onclick="deleteWorkout(${actualIndex})" style="background: rgba(255, 59, 59, 0.2);">
+                                Delete
+                            </button>
                         </div>
                 `;
                 
-                workout.exercises.forEach(exercise => {
+                workout.exercises.forEach((exercise, exerciseIndex) => {
                     const setDetails = exercise.sets.map((set, i) => 
                         `Set ${i + 1}: ${set.weight} lbs × ${set.reps}`
                     ).join(', ');
@@ -1376,6 +1382,12 @@
                                 <div class="exercise-name" style="font-size: 14px;">${exercise.exercise}</div>
                                 <div class="exercise-details" style="font-size: 12px;">${exercise.sets.length} sets • ${setDetails}</div>
                             </div>
+                            <div style="display: flex; gap: 6px;">
+                                <button class="delete-button" onclick="editExercise(${actualIndex}, ${exerciseIndex})" style="font-size: 14px; padding: 6px 10px;">
+                                    Edit
+                                </button>
+                                <button class="delete-button" onclick="deleteHistoryExercise(${actualIndex}, ${exerciseIndex})">×</button>
+                            </div>
                         </div>
                     `;
                 });
@@ -1384,6 +1396,125 @@
             });
             
             container.innerHTML = html;
+        }
+
+        function deleteWorkout(workoutIndex) {
+            if (confirm('Delete this entire workout? This cannot be undone.')) {
+                workouts.splice(workoutIndex, 1);
+                localStorage.setItem('workouts', JSON.stringify(workouts));
+                updateHistory();
+                updateStats();
+                showNotification('Workout deleted');
+            }
+        }
+
+        function editExercise(workoutIndex, exerciseIndex) {
+            const exercise = workouts[workoutIndex].exercises[exerciseIndex];
+            
+            // Create edit form
+            const editForm = document.createElement('div');
+            editForm.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: var(--bg-secondary);
+                padding: 20px;
+                border-radius: 16px;
+                z-index: 1000;
+                width: 90%;
+                max-width: 350px;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+                border: 1px solid var(--border);
+            `;
+            
+            let setsHtml = '';
+            exercise.sets.forEach((set, i) => {
+                setsHtml += `
+                    <div style="margin-bottom: 12px;">
+                        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 6px;">Set ${i + 1}</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <input type="number" id="editWeight${i}" value="${set.weight}" 
+                                class="form-input" style="min-height: 40px; font-size: 15px;" placeholder="Weight">
+                            <input type="number" id="editReps${i}" value="${set.reps}" 
+                                class="form-input" style="min-height: 40px; font-size: 15px;" placeholder="Reps">
+                        </div>
+                    </div>
+                `;
+            });
+            
+            editForm.innerHTML = `
+                <div style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">Edit ${exercise.exercise}</div>
+                ${setsHtml}
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button onclick="saveEdit(${workoutIndex}, ${exerciseIndex}, ${exercise.sets.length})" 
+                        class="button-primary" style="flex: 1; min-height: 44px;">Save</button>
+                    <button onclick="cancelEdit()" 
+                        class="button-secondary" style="flex: 1; min-height: 44px;">Cancel</button>
+                </div>
+            `;
+            
+            // Add overlay
+            const overlay = document.createElement('div');
+            overlay.id = 'editOverlay';
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: 999;
+            `;
+            overlay.onclick = cancelEdit;
+            
+            document.body.appendChild(overlay);
+            document.body.appendChild(editForm);
+            editForm.id = 'editForm';
+        }
+
+        function saveEdit(workoutIndex, exerciseIndex, setCount) {
+            const newSets = [];
+            for (let i = 0; i < setCount; i++) {
+                const weight = parseFloat(document.getElementById(`editWeight${i}`).value) || 0;
+                const reps = parseInt(document.getElementById(`editReps${i}`).value) || 0;
+                newSets.push({ weight, reps });
+            }
+            
+            workouts[workoutIndex].exercises[exerciseIndex].sets = newSets;
+            localStorage.setItem('workouts', JSON.stringify(workouts));
+            
+            cancelEdit();
+            updateHistory();
+            updateStats();
+            showNotification('Exercise updated');
+        }
+
+        function cancelEdit() {
+            const form = document.getElementById('editForm');
+            const overlay = document.getElementById('editOverlay');
+            if (form) form.remove();
+            if (overlay) overlay.remove();
+        }
+
+        function deleteHistoryExercise(workoutIndex, exerciseIndex) {
+            if (confirm('Delete this exercise from your history?')) {
+                workouts[workoutIndex].exercises.splice(exerciseIndex, 1);
+                
+                // If no exercises left in workout, remove the entire workout
+                if (workouts[workoutIndex].exercises.length === 0) {
+                    workouts.splice(workoutIndex, 1);
+                }
+                
+                // Save to localStorage
+                localStorage.setItem('workouts', JSON.stringify(workouts));
+                
+                // Update displays
+                updateHistory();
+                updateStats();
+                
+                showNotification('Exercise deleted from history');
+            }
         }
 
         // Utilities
@@ -1402,6 +1533,11 @@
         // Make functions global
         window.deleteExercise = deleteExercise;
         window.toggleRestTimer = toggleRestTimer;
+        window.deleteHistoryExercise = deleteHistoryExercise;
+        window.deleteWorkout = deleteWorkout;
+        window.editExercise = editExercise;
+        window.saveEdit = saveEdit;
+        window.cancelEdit = cancelEdit;
     </script>
 </body>
 </html>
