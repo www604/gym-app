@@ -821,6 +821,9 @@
             document.getElementById('startBtn').addEventListener('click', startWorkout);
             document.getElementById('pauseBtn').addEventListener('click', pauseWorkout);
             document.getElementById('stopBtn').addEventListener('click', stopWorkout);
+            
+            // Add custom exercise button
+            document.getElementById('addCustomBtn').addEventListener('click', addCustomExercise);
         }
 
         function switchTab(tabName) {
@@ -883,7 +886,7 @@
             
             // Check if exercise already exists
             const mergedExercises = getMergedExercises();
-            if (mergedExercises[muscle].includes(name)) {
+            if (mergedExercises[muscle] && mergedExercises[muscle].includes(name)) {
                 showNotification('This exercise already exists', 'error');
                 return;
             }
@@ -904,6 +907,9 @@
             }
             
             showNotification(`Added "${name}" to ${muscle} exercises!`);
+            
+            // Collapse the details element
+            document.querySelector('details').removeAttribute('open');
         }
 
         function selectSets(num) {
@@ -1393,10 +1399,9 @@
             setTimeout(() => notification.remove(), 3000);
         }
 
-        // Make deleteExercise and other functions global
+        // Make functions global
         window.deleteExercise = deleteExercise;
         window.toggleRestTimer = toggleRestTimer;
-        window.addCustomExercise = addCustomExercise;
     </script>
 </body>
 </html>
