@@ -719,6 +719,17 @@
                     <div class="form-section-title">Muscle Distribution</div>
                     <div id="muscleDistribution"></div>
                 </div>
+                
+                <div class="form-section">
+                    <div class="form-section-title">Exercise Progression</div>
+                    <div style="margin-bottom: 12px;">
+                        <select class="form-select" id="exerciseSelect" onchange="updateExerciseStats()" style="min-height: 40px; font-size: 15px;">
+                            <option value="">Select an exercise to view stats</option>
+                        </select>
+                    </div>
+                    <div id="exerciseStats"></div>
+                    <canvas id="progressChart" style="display: none; margin-top: 20px; max-height: 200px;"></canvas>
+                </div>
             </div>
         </div>
         
@@ -1094,20 +1105,119 @@
                 return;
             }
             
-            if (confirm('Finish workout and save?')) {
-                // Calculate duration
-                const totalTime = sessionPausedTime + (sessionPaused ? 0 : Date.now() - sessionStartTime);
-                currentSession.duration = Math.floor(totalTime / 1000);
-                
-                // Save workout
-                workouts.push(currentSession);
-                localStorage.setItem('workouts', JSON.stringify(workouts));
-                
-                resetSession();
-                updateStats();
-                updateHistory();
-                showNotification('Workout saved!');
+            // Create time input form
+            const timeForm = document.createElement('div');
+            timeForm.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: var(--bg-secondary);
+                padding: 20px;
+                border-radius: 16px;
+                z-index: 1000;
+                width: 90%;
+                max-width: 350px;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+                border: 1px solid var(--border);
+            `;
+            
+            const now = new Date();
+            const defaultStart = new Date(now - (sessionPausedTime + (sessionPaused ? 0 : now - sessionStartTime)));
+            const startHours = defaultStart.getHours().toString().padStart(2, '0');
+            const startMinutes = defaultStart.getMinutes().toString().padStart(2, '0');
+            const endHours = now.getHours().toString().padStart(2, '0');
+            const endMinutes = now.getMinutes().toString().padStart(2, '0');
+            
+            timeForm.innerHTML = `
+                <div style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">Finish Workout</div>
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Start Time</label>
+                    <input type="time" id="workoutStartTime" value="${startHours}:${startMinutes}" 
+                        class="form-input" style="min-height: 40px; font-size: 15px;">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;">End Time</label>
+                    <input type="time" id="workoutEndTime" value="${endHours}:${endMinutes}" 
+                        class="form-input" style="min-height: 40px; font-size: 15px;">
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="finishWorkoutWithTime()" 
+                        class="button-primary" style="flex: 1; min-height: 44px;">Save Workout</button>
+                    <button onclick="cancelTimeForm()" 
+                        class="button-secondary" style="flex: 1; min-height: 44px;">Cancel</button>
+                </div>
+            `;
+            
+            // Add overlay
+            const overlay = document.createElement('div');
+            overlay.id = 'timeOverlay';
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: 999;
+            `;
+            
+            document.body.appendChild(overlay);
+            document.body.appendChild(timeForm);
+            timeForm.id = 'timeForm';
+        }
+
+        function finishWorkoutWithTime() {
+            const startTime = document.getElementById('workoutStartTime').value;
+            const endTime = document.getElementById('workoutEndTime').value;
+            
+            if (!startTime || !endTime) {
+                alert('Please enter both start and end times');
+                return;
             }
+            
+            // Calculate duration from times
+            const [startHours, startMinutes] = startTime.split(':').map(Number);
+            const [endHours, endMinutes] = endTime.split(':').map(Number);
+            const startTotalMinutes = startHours * 60 + startMinutes;
+            const endTotalMinutes = endHours * 60 + endMinutes;
+            const durationMinutes = endTotalMinutes - startTotalMinutes;
+            
+            if (durationMinutes <= 0) {
+                alert('End time must be after start time');
+                return;
+            }
+            
+            // Update session
+            currentSession.startTime = formatTimeFromInput(startTime);
+            currentSession.endTime = formatTimeFromInput(endTime);
+            currentSession.duration = durationMinutes * 60; // Convert to seconds
+            
+            // Save workout
+            workouts.push(currentSession);
+            localStorage.setItem('workouts', JSON.stringify(workouts));
+            
+            // Clean up
+            cancelTimeForm();
+            resetSession();
+            updateHistory();
+            updateStats();
+            showNotification('Great workout! Results saved! 🎉');
+        }
+
+        function cancelTimeForm() {
+            const form = document.getElementById('timeForm');
+            const overlay = document.getElementById('timeOverlay');
+            if (form) form.remove();
+            if (overlay) overlay.remove();
+        }
+
+        function formatTimeFromInput(timeString) {
+            const [hours, minutes] = timeString.split(':');
+            const hour = parseInt(hours);
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            const displayHour = hour % 12 || 12;
+            return `${displayHour}:${minutes} ${ampm}`;
         }
 
         function resetSession() {
@@ -1329,6 +1439,124 @@
             } else {
                 distContainer.innerHTML = '<div class="empty-state" style="padding: 20px;">No data yet</div>';
             }
+            
+            // Populate exercise dropdown
+            const exerciseSelect = document.getElementById('exerciseSelect');
+            if (exerciseSelect) {
+                const allExercises = new Set();
+                workouts.forEach(workout => {
+                    workout.exercises.forEach(exercise => {
+                        allExercises.add(exercise.exercise);
+                    });
+                });
+                
+                exerciseSelect.innerHTML = '<option value="">Select an exercise to view stats</option>';
+                Array.from(allExercises).sort().forEach(exercise => {
+                    const option = document.createElement('option');
+                    option.value = exercise;
+                    option.textContent = exercise;
+                    exerciseSelect.appendChild(option);
+                });
+            }
+        }
+
+        // Exercise-specific stats
+        function updateExerciseStats() {
+            const selectedExercise = document.getElementById('exerciseSelect').value;
+            const statsContainer = document.getElementById('exerciseStats');
+            
+            if (!selectedExercise) {
+                statsContainer.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">Select an exercise to view its progression</div>';
+                return;
+            }
+            
+            // Gather data for selected exercise
+            const exerciseData = [];
+            workouts.forEach(workout => {
+                workout.exercises.forEach(exercise => {
+                    if (exercise.exercise === selectedExercise) {
+                        const maxWeight = Math.max(...exercise.sets.map(set => set.weight));
+                        const totalVolume = exercise.sets.reduce((sum, set) => sum + (set.weight * set.reps), 0);
+                        const totalReps = exercise.sets.reduce((sum, set) => sum + set.reps, 0);
+                        
+                        exerciseData.push({
+                            date: workout.date,
+                            maxWeight: maxWeight,
+                            volume: totalVolume,
+                            sets: exercise.sets.length,
+                            totalReps: totalReps,
+                            details: exercise.sets
+                        });
+                    }
+                });
+            });
+            
+            if (exerciseData.length === 0) {
+                statsContainer.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">No data for this exercise</div>';
+                return;
+            }
+            
+            // Calculate stats
+            const weights = exerciseData.map(d => d.maxWeight);
+            const maxWeight = Math.max(...weights);
+            const avgWeight = weights.reduce((a, b) => a + b, 0) / weights.length;
+            const volumes = exerciseData.map(d => d.volume);
+            const maxVolume = Math.max(...volumes);
+            const avgVolume = volumes.reduce((a, b) => a + b, 0) / volumes.length;
+            
+            // Calculate progression
+            const firstWeight = exerciseData[0].maxWeight;
+            const lastWeight = exerciseData[exerciseData.length - 1].maxWeight;
+            const progression = ((lastWeight - firstWeight) / firstWeight * 100).toFixed(1);
+            
+            // Build HTML
+            let html = `
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
+                    <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 10px; text-align: center;">
+                        <div style="font-size: 24px; font-weight: 700; color: var(--primary);">${maxWeight} lbs</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">Personal Record</div>
+                    </div>
+                    <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 10px; text-align: center;">
+                        <div style="font-size: 24px; font-weight: 700; color: var(--text-primary);">${exerciseData.length}</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">Times Performed</div>
+                    </div>
+                    <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 10px; text-align: center;">
+                        <div style="font-size: 24px; font-weight: 700; color: var(--text-primary);">${avgWeight.toFixed(1)} lbs</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">Avg Weight</div>
+                    </div>
+                    <div style="background: var(--bg-tertiary); padding: 12px; border-radius: 10px; text-align: center;">
+                        <div style="font-size: 24px; font-weight: 700; color: ${progression >= 0 ? 'var(--success)' : 'var(--primary)'};">
+                            ${progression >= 0 ? '+' : ''}${progression}%
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">Progression</div>
+                    </div>
+                </div>
+                
+                <div style="font-weight: 600; margin-bottom: 10px; color: var(--text-primary);">Recent History</div>
+            `;
+            
+            // Show last 5 performances
+            exerciseData.slice(-5).reverse().forEach(data => {
+                const setDetails = data.details.map((set, i) => 
+                    `${set.weight}×${set.reps}`
+                ).join(', ');
+                
+                html += `
+                    <div style="background: var(--bg-tertiary); padding: 10px; border-radius: 8px; margin-bottom: 8px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <span style="font-size: 13px; color: var(--text-primary);">${data.date}</span>
+                            <span style="font-size: 13px; color: var(--primary); font-weight: 600;">
+                                Max: ${data.maxWeight} lbs
+                            </span>
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">
+                            ${data.sets} sets: ${setDetails} • Volume: ${data.volume} lbs
+                        </div>
+                    </div>
+                `;
+            });
+            
+            statsContainer.innerHTML = html;
         }
 
         // History
@@ -1348,8 +1576,8 @@
                 }, 0);
                 
                 const duration = workout.duration ? 
-                    `${Math.floor(workout.duration / 60)}m ${workout.duration % 60}s` : 
-                    'Not tracked';
+                    `${Math.floor(workout.duration / 60)}m` : 
+                    (workout.endTime ? `${workout.startTime} - ${workout.endTime}` : 'Not tracked');
                 
                 html += `
                     <div class="session-card">
@@ -1409,7 +1637,8 @@
         }
 
         function editExercise(workoutIndex, exerciseIndex) {
-            const exercise = workouts[workoutIndex].exercises[exerciseIndex];
+            const workout = workouts[workoutIndex];
+            const exercise = workout.exercises[exerciseIndex];
             
             // Create edit form
             const editForm = document.createElement('div');
@@ -1424,6 +1653,8 @@
                 z-index: 1000;
                 width: 90%;
                 max-width: 350px;
+                max-height: 80vh;
+                overflow-y: auto;
                 box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
                 border: 1px solid var(--border);
             `;
@@ -1443,8 +1674,23 @@
                 `;
             });
             
+            // Get existing times or use defaults
+            const startTime = workout.startTime || '12:00 PM';
+            const endTime = workout.endTime || calculateEndTime(workout);
+            
             editForm.innerHTML = `
                 <div style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">Edit ${exercise.exercise}</div>
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Workout Start Time</label>
+                    <input type="time" id="editStartTime" value="${convertTo24Hour(startTime)}" 
+                        class="form-input" style="min-height: 40px; font-size: 15px;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Workout End Time</label>
+                    <input type="time" id="editEndTime" value="${convertTo24Hour(endTime)}" 
+                        class="form-input" style="min-height: 40px; font-size: 15px;">
+                </div>
+                <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: var(--text-primary);">Sets</div>
                 ${setsHtml}
                 <div style="display: flex; gap: 10px; margin-top: 20px;">
                     <button onclick="saveEdit(${workoutIndex}, ${exerciseIndex}, ${exercise.sets.length})" 
@@ -1473,12 +1719,53 @@
             editForm.id = 'editForm';
         }
 
+        function convertTo24Hour(time12h) {
+            if (!time12h || !time12h.includes(' ')) return '12:00';
+            
+            const [time, modifier] = time12h.split(' ');
+            let [hours, minutes] = time.split(':');
+            hours = parseInt(hours);
+            
+            if (modifier === 'PM' && hours !== 12) {
+                hours += 12;
+            }
+            if (modifier === 'AM' && hours === 12) {
+                hours = 0;
+            }
+            
+            return `${hours.toString().padStart(2, '0')}:${minutes}`;
+        }
+
+        function calculateEndTime(workout) {
+            // If duration exists, calculate end time
+            if (workout.duration && workout.startTime) {
+                // This is a simple approximation
+                return workout.startTime; // You might want to calculate actual end time
+            }
+            return '1:00 PM';
+        }
+
         function saveEdit(workoutIndex, exerciseIndex, setCount) {
             const newSets = [];
             for (let i = 0; i < setCount; i++) {
                 const weight = parseFloat(document.getElementById(`editWeight${i}`).value) || 0;
                 const reps = parseInt(document.getElementById(`editReps${i}`).value) || 0;
                 newSets.push({ weight, reps });
+            }
+            
+            // Update times
+            const startTime = document.getElementById('editStartTime').value;
+            const endTime = document.getElementById('editEndTime').value;
+            
+            if (startTime && endTime) {
+                workouts[workoutIndex].startTime = formatTimeFromInput(startTime);
+                workouts[workoutIndex].endTime = formatTimeFromInput(endTime);
+                
+                // Calculate duration
+                const [startHours, startMinutes] = startTime.split(':').map(Number);
+                const [endHours, endMinutes] = endTime.split(':').map(Number);
+                const durationMinutes = (endHours * 60 + endMinutes) - (startHours * 60 + startMinutes);
+                workouts[workoutIndex].duration = durationMinutes * 60; // Convert to seconds
             }
             
             workouts[workoutIndex].exercises[exerciseIndex].sets = newSets;
@@ -1530,6 +1817,114 @@
             setTimeout(() => notification.remove(), 3000);
         }
 
+        // Draw progress chart
+        function drawProgressChart(exerciseData) {
+            const canvas = document.getElementById('progressChart');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas size
+            canvas.width = canvas.offsetWidth * 2;
+            canvas.height = 400;
+            canvas.style.width = '100%';
+            canvas.style.height = '200px';
+            
+            const padding = 40;
+            const chartWidth = canvas.width - (padding * 2);
+            const chartHeight = canvas.height - (padding * 2);
+            
+            // Calculate max weight and volume for scaling
+            const maxWeight = Math.max(...exerciseData.map(d => d.maxWeight));
+            const maxVolume = Math.max(...exerciseData.map(d => d.volume));
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw axes
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(padding, padding);
+            ctx.lineTo(padding, canvas.height - padding);
+            ctx.lineTo(canvas.width - padding, canvas.height - padding);
+            ctx.stroke();
+            
+            // Draw grid lines
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 5; i++) {
+                const y = padding + (chartHeight * i / 5);
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(canvas.width - padding, y);
+                ctx.stroke();
+            }
+            
+            if (exerciseData.length > 1) {
+                const xStep = chartWidth / (exerciseData.length - 1);
+                
+                // Draw max weight line
+                ctx.strokeStyle = '#ff3b3b';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                exerciseData.forEach((data, i) => {
+                    const x = padding + (i * xStep);
+                    const y = canvas.height - padding - (data.maxWeight / maxWeight * chartHeight);
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.stroke();
+                
+                // Draw volume line
+                ctx.strokeStyle = '#4caf50';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                exerciseData.forEach((data, i) => {
+                    const x = padding + (i * xStep);
+                    const y = canvas.height - padding - (data.volume / maxVolume * chartHeight);
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.stroke();
+                
+                // Draw data points
+                exerciseData.forEach((data, i) => {
+                    const x = padding + (i * xStep);
+                    
+                    // Weight point
+                    const weightY = canvas.height - padding - (data.maxWeight / maxWeight * chartHeight);
+                    ctx.fillStyle = '#ff3b3b';
+                    ctx.beginPath();
+                    ctx.arc(x, weightY, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Volume point
+                    const volumeY = canvas.height - padding - (data.volume / maxVolume * chartHeight);
+                    ctx.fillStyle = '#4caf50';
+                    ctx.beginPath();
+                    ctx.arc(x, volumeY, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+            
+            // Draw legend
+            ctx.font = '24px -apple-system';
+            ctx.fillStyle = '#ff3b3b';
+            ctx.fillRect(padding, 20, 30, 4);
+            ctx.fillText('Max Weight', padding + 40, 30);
+            
+            ctx.fillStyle = '#4caf50';
+            ctx.fillRect(padding + 200, 20, 30, 4);
+            ctx.fillText('Total Volume', padding + 240, 30);
+        }
+
         // Make functions global
         window.deleteExercise = deleteExercise;
         window.toggleRestTimer = toggleRestTimer;
@@ -1538,6 +1933,9 @@
         window.editExercise = editExercise;
         window.saveEdit = saveEdit;
         window.cancelEdit = cancelEdit;
+        window.updateExerciseStats = updateExerciseStats;
+        window.finishWorkoutWithTime = finishWorkoutWithTime;
+        window.cancelTimeForm = cancelTimeForm;
     </script>
 </body>
 </html>
