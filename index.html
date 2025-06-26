@@ -16,6 +16,188 @@
             touch-action: manipulation;
         }
 
+        // Calculate 1RM using multiple formulas and advanced analysis
+        function calculate1RMSection(exerciseData) {
+            // Gather all rep maxes from recent workouts (last 8 weeks)
+            const recentDate = new Date();
+            recentDate.setDate(recentDate.getDate() - 56); // 8 weeks
+            
+            const recentData = exerciseData.filter(data => {
+                const workoutDate = new Date(data.date);
+                return workoutDate >= recentDate;
+            });
+            
+            if (recentData.length === 0) {
+                return '';
+            }
+            
+            // Calculate 1RM estimates using different formulas
+            const oneRMEstimates = [];
+            
+            recentData.forEach(workout => {
+                workout.details.forEach(set => {
+                    if (set.reps >= 1 && set.reps <= 10 && set.weight > 0) {
+                        // Epley Formula: 1RM = weight × (1 + reps/30)
+                        const epley = set.weight * (1 + set.reps / 30);
+                        
+                        // Brzycki Formula: 1RM = weight × (36 / (37 - reps))
+                        const brzycki = set.weight * (36 / (37 - set.reps));
+                        
+                        // Lander Formula: 1RM = (100 × weight) / (101.3 - 2.67123 × reps)
+                        const lander = (100 * set.weight) / (101.3 - 2.67123 * set.reps);
+                        
+                        // Lombardi Formula: 1RM = weight × reps^0.10
+                        const lombardi = set.weight * Math.pow(set.reps, 0.10);
+                        
+                        // O'Conner Formula: 1RM = weight × (1 + 0.025 × reps)
+                        const oconner = set.weight * (1 + 0.025 * set.reps);
+                        
+                        // Wathan Formula: 1RM = (100 × weight) / (48.8 + 53.8 × e^(-0.075 × reps))
+                        const wathan = (100 * set.weight) / (48.8 + 53.8 * Math.exp(-0.075 * set.reps));
+                        
+                        oneRMEstimates.push({
+                            date: workout.date,
+                            weight: set.weight,
+                            reps: set.reps,
+                            epley: epley,
+                            brzycki: brzycki,
+                            lander: lander,
+                            lombardi: lombardi,
+                            oconner: oconner,
+                            wathan: wathan,
+                            average: (epley + brzycki + lander + lombardi + oconner + wathan) / 6
+                        });
+                    }
+                });
+            });
+            
+            if (oneRMEstimates.length === 0) {
+                return '';
+            }
+            
+            // Sort by date to analyze progression
+            oneRMEstimates.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            // Calculate current estimated 1RM (from last 3 workouts)
+            const recentEstimates = oneRMEstimates.slice(-5);
+            const currentEstimatedMax = Math.max(...recentEstimates.map(e => e.average));
+            
+            // Calculate progression rate (weekly increase)
+            let progressionRate = 0;
+            if (oneRMEstimates.length > 1) {
+                const firstEstimate = oneRMEstimates[0].average;
+                const lastEstimate = oneRMEstimates[oneRMEstimates.length - 1].average;
+                const daysDiff = (new Date(oneRMEstimates[oneRMEstimates.length - 1].date) - new Date(oneRMEstimates[0].date)) / (1000 * 60 * 60 * 24);
+                const weeksDiff = daysDiff / 7;
+                if (weeksDiff > 0) {
+                    progressionRate = (lastEstimate - firstEstimate) / weeksDiff;
+                }
+            }
+            
+            // Project future 1RM based on progression
+            const projected1RM = currentEstimatedMax + (progressionRate * 4); // 4 weeks projection
+            
+            // Find the most accurate formula based on consistency
+            const formulaAccuracy = {
+                epley: calculateFormulaConsistency(oneRMEstimates, 'epley'),
+                brzycki: calculateFormulaConsistency(oneRMEstimates, 'brzycki'),
+                lander: calculateFormulaConsistency(oneRMEstimates, 'lander'),
+                lombardi: calculateFormulaConsistency(oneRMEstimates, 'lombardi'),
+                oconner: calculateFormulaConsistency(oneRMEstimates, 'oconner'),
+                wathan: calculateFormulaConsistency(oneRMEstimates, 'wathan')
+            };
+            
+            const mostAccurateFormula = Object.entries(formulaAccuracy).reduce((a, b) => a[1] < b[1] ? a : b)[0];
+            const mostAccurate1RM = recentEstimates[recentEstimates.length - 1][mostAccurateFormula];
+            
+            // Confidence calculation based on data consistency
+            const confidence = calculateConfidence(oneRMEstimates);
+            
+            return `
+                <div style="background: linear-gradient(135deg, rgba(255, 59, 59, 0.1) 0%, rgba(255, 59, 59, 0.05) 100%); 
+                    border: 1px solid rgba(255, 59, 59, 0.3); border-radius: 16px; padding: 16px; margin-bottom: 20px;">
+                    <div style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">
+                        Estimated 1 Rep Max Analysis
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;">
+                        <div style="background: var(--bg-tertiary); padding: 10px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 20px; font-weight: 700; color: var(--primary);">
+                                ${Math.round(currentEstimatedMax)} lbs
+                            </div>
+                            <div style="font-size: 11px; color: var(--text-secondary);">Current Est. 1RM</div>
+                        </div>
+                        <div style="background: var(--bg-tertiary); padding: 10px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 20px; font-weight: 700; color: var(--success);">
+                                ${Math.round(projected1RM)} lbs
+                            </div>
+                            <div style="font-size: 11px; color: var(--text-secondary);">4-Week Projection</div>
+                        </div>
+                    </div>
+                    
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+                        <strong>Most Accurate Formula:</strong> ${mostAccurateFormula.charAt(0).toUpperCase() + mostAccurateFormula.slice(1)} 
+                        (${Math.round(mostAccurate1RM)} lbs)
+                    </div>
+                    
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+                        <strong>Weekly Progression:</strong> ${progressionRate >= 0 ? '+' : ''}${progressionRate.toFixed(1)} lbs/week
+                    </div>
+                    
+                    <div style="font-size: 12px; color: var(--text-secondary);">
+                        <strong>Confidence Level:</strong> ${confidence}% 
+                        <span style="font-size: 11px;">(based on ${oneRMEstimates.length} data points)</span>
+                    </div>
+                    
+                    <details style="margin-top: 12px;">
+                        <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">
+                            View All Formulas
+                        </summary>
+                        <div style="margin-top: 8px; font-size: 11px; color: var(--text-secondary);">
+                            ${Object.entries(recentEstimates[recentEstimates.length - 1])
+                                .filter(([key]) => ['epley', 'brzycki', 'lander', 'lombardi', 'oconner', 'wathan'].includes(key))
+                                .map(([formula, value]) => `
+                                    <div style="margin: 4px 0;">
+                                        ${formula.charAt(0).toUpperCase() + formula.slice(1)}: ${Math.round(value)} lbs
+                                    </div>
+                                `).join('')}
+                        </div>
+                    </details>
+                </div>
+            `;
+        }
+
+        function calculateFormulaConsistency(estimates, formula) {
+            if (estimates.length < 2) return 0;
+            
+            const values = estimates.map(e => e[formula]);
+            const mean = values.reduce((a, b) => a + b, 0) / values.length;
+            const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+            const stdDev = Math.sqrt(variance);
+            
+            return stdDev / mean; // Coefficient of variation (lower is better)
+        }
+
+        function calculateConfidence(estimates) {
+            if (estimates.length < 3) return 50;
+            
+            // Base confidence on number of data points
+            let confidence = Math.min(70, 50 + estimates.length * 2);
+            
+            // Adjust based on consistency
+            const cvs = estimates.map(e => e.average);
+            const mean = cvs.reduce((a, b) => a + b, 0) / cvs.length;
+            const variance = cvs.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / cvs.length;
+            const cv = Math.sqrt(variance) / mean;
+            
+            // Lower CV means more consistent data, higher confidence
+            if (cv < 0.05) confidence += 20;
+            else if (cv < 0.10) confidence += 10;
+            else if (cv > 0.20) confidence -= 10;
+            
+            return Math.min(95, Math.max(50, Math.round(confidence)));
+        }
+
         :root {
             --primary: #ff3b3b;
             --primary-dark: #cc2e2e;
