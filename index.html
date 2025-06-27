@@ -18,163 +18,51 @@
 
         // Calculate 1RM with multiple formulas
         function calculateOneRepMax(exerciseData) {
-            // Collect all valid sets for 1RM calculation
-            const validSets = [];
+            // Find the most recent set with reps between 1-10
+            let mostRecentQualifyingSet = null;
             
-            exerciseData.forEach(workout => {
-                workout.details.forEach(set => {
+            // Go through data in reverse to find most recent
+            for (let i = exerciseData.length - 1; i >= 0; i--) {
+                const workout = exerciseData[i];
+                for (let j = workout.details.length - 1; j >= 0; j--) {
+                    const set = workout.details[j];
                     if (set.reps >= 1 && set.reps <= 10 && set.weight > 0) {
-                        validSets.push({
+                        mostRecentQualifyingSet = {
                             weight: set.weight,
-                            reps: set.reps,
-                            date: workout.date
-                        });
+                            reps: set.reps
+                        };
+                        break;
                     }
-                });
-            });
-            
-            if (validSets.length === 0) {
-                return ''; // No valid data for 1RM calculation
-            }
-            
-            // Calculate 1RM for each set using all formulas
-            const calculations = validSets.map(set => {
-                // Epley Formula
-                const epley = set.weight * (1 + set.reps / 30);
-                
-                // Brzycki Formula
-                const brzycki = set.weight * (36 / (37 - set.reps));
-                
-                // Lander Formula
-                const lander = (100 * set.weight) / (101.3 - 2.67123 * set.reps);
-                
-                // Lombardi Formula
-                const lombardi = set.weight * Math.pow(set.reps, 0.10);
-                
-                // O'Conner Formula
-                const oconner = set.weight * (1 + 0.025 * set.reps);
-                
-                // Wathan Formula
-                const wathan = (100 * set.weight) / (48.8 + 53.8 * Math.exp(-0.075 * set.reps));
-                
-                return {
-                    weight: set.weight,
-                    reps: set.reps,
-                    date: set.date,
-                    epley: Math.round(epley),
-                    brzycki: Math.round(brzycki),
-                    lander: Math.round(lander),
-                    lombardi: Math.round(lombardi),
-                    oconner: Math.round(oconner),
-                    wathan: Math.round(wathan),
-                    average: Math.round((epley + brzycki + lander + lombardi + oconner + wathan) / 6)
-                };
-            });
-            
-            // Get most recent calculation
-            const mostRecent = calculations[calculations.length - 1];
-            
-            // Calculate consistency for each formula
-            const formulaStdDevs = {};
-            ['epley', 'brzycki', 'lander', 'lombardi', 'oconner', 'wathan'].forEach(formula => {
-                const values = calculations.map(calc => calc[formula]);
-                const mean = values.reduce((a, b) => a + b, 0) / values.length;
-                const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
-                formulaStdDevs[formula] = Math.sqrt(variance);
-            });
-            
-            // Find most consistent formula (lowest standard deviation)
-            const mostConsistent = Object.entries(formulaStdDevs)
-                .sort((a, b) => a[1] - b[1])[0][0];
-            
-            // Calculate progression if multiple data points
-            let weeklyProgress = 0;
-            let projectedMax = mostRecent.average;
-            
-            if (calculations.length > 1) {
-                const oldestCalc = calculations[0];
-                const daysDiff = (new Date(mostRecent.date) - new Date(oldestCalc.date)) / (1000 * 60 * 60 * 24);
-                if (daysDiff > 0) {
-                    const totalProgress = mostRecent.average - oldestCalc.average;
-                    weeklyProgress = (totalProgress / daysDiff) * 7;
-                    projectedMax = mostRecent.average + (weeklyProgress * 4); // 4 week projection
                 }
+                if (mostRecentQualifyingSet) break;
             }
             
-            // Calculate confidence
-            let confidence = 50 + Math.min(45, calculations.length * 5);
-            const avgStdDev = Object.values(formulaStdDevs).reduce((a, b) => a + b, 0) / 6;
-            if (avgStdDev < 10) confidence = Math.min(95, confidence + 10);
+            // If no qualifying set found, return empty
+            if (!mostRecentQualifyingSet) {
+                return '';
+            }
             
+            const weight = mostRecentQualifyingSet.weight;
+            const reps = mostRecentQualifyingSet.reps;
+            
+            // Calculate 1RM using 5 formulas
+            const epley = weight * (1 + reps / 30);
+            const brzycki = weight * (36 / (37 - reps));
+            const lander = (100 * weight) / (101.3 - 2.67123 * reps);
+            const lombardi = weight * Math.pow(reps, 0.10);
+            const oconner = weight * (1 + 0.025 * reps);
+            
+            // Average of all formulas
+            const average = (epley + brzycki + lander + lombardi + oconner) / 5;
+            
+            // Create simple display
             return `
-                <div style="background: linear-gradient(135deg, rgba(255, 59, 59, 0.15) 0%, rgba(255, 59, 59, 0.08) 100%); 
-                    border: 1px solid rgba(255, 59, 59, 0.4); border-radius: 16px; padding: 16px; margin-bottom: 20px;">
-                    <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; text-align: center;">
-                        🎯 Estimated 1 Rep Max Analysis
+                <div style="background: #ff3b3b20; border: 2px solid #ff3b3b; border-radius: 12px; padding: 16px; margin-bottom: 20px; text-align: center;">
+                    <div style="font-size: 14px; color: #aaa; margin-bottom: 8px;">Estimated 1 Rep Max</div>
+                    <div style="font-size: 36px; font-weight: 700; color: #ff3b3b;">${Math.round(average)} lbs</div>
+                    <div style="font-size: 12px; color: #888; margin-top: 8px;">
+                        Based on: ${weight} lbs × ${reps} reps
                     </div>
-                    
-                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px;">
-                        <div style="background: rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 10px; text-align: center; border: 1px solid rgba(255, 59, 59, 0.2);">
-                            <div style="font-size: 22px; font-weight: 700; color: var(--primary);">
-                                ${mostRecent.average} lbs
-                            </div>
-                            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Current Est. 1RM</div>
-                        </div>
-                        <div style="background: rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 10px; text-align: center; border: 1px solid rgba(76, 175, 80, 0.3);">
-                            <div style="font-size: 22px; font-weight: 700; color: var(--success);">
-                                ${Math.round(projectedMax)} lbs
-                            </div>
-                            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">4-Week Target</div>
-                        </div>
-                    </div>
-                    
-                    <div style="background: rgba(0, 0, 0, 0.2); padding: 10px; border-radius: 8px; margin-bottom: 10px;">
-                        <div style="font-size: 13px; color: var(--text-primary); margin-bottom: 6px;">
-                            <strong>Most Accurate:</strong> ${mostConsistent.charAt(0).toUpperCase() + mostConsistent.slice(1)} Formula 
-                            <span style="color: var(--primary);">(${mostRecent[mostConsistent]} lbs)</span>
-                        </div>
-                        <div style="font-size: 13px; color: var(--text-primary); margin-bottom: 6px;">
-                            <strong>Progress Rate:</strong> 
-                            <span style="color: ${weeklyProgress >= 0 ? 'var(--success)' : 'var(--primary)'};">
-                                ${weeklyProgress >= 0 ? '+' : ''}${weeklyProgress.toFixed(1)} lbs/week
-                            </span>
-                        </div>
-                        <div style="font-size: 13px; color: var(--text-primary);">
-                            <strong>Confidence:</strong> ${Math.round(confidence)}% 
-                            <span style="font-size: 11px; color: var(--text-secondary);">(${calculations.length} calculations)</span>
-                        </div>
-                    </div>
-                    
-                    <details style="cursor: pointer;">
-                        <summary style="font-size: 12px; color: var(--text-secondary); padding: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
-                            📊 View All Formula Results (Click to expand)
-                        </summary>
-                        <div style="margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.2); border-radius: 6px;">
-                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">
-                                Based on most recent set: ${mostRecent.weight} lbs × ${mostRecent.reps} reps
-                            </div>
-                            <div style="display: grid; gap: 4px; font-size: 12px;">
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Epley:</span><span style="color: var(--primary); font-weight: 600;">${mostRecent.epley} lbs</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Brzycki:</span><span style="color: var(--primary); font-weight: 600;">${mostRecent.brzycki} lbs</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Lander:</span><span style="color: var(--primary); font-weight: 600;">${mostRecent.lander} lbs</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Lombardi:</span><span style="color: var(--primary); font-weight: 600;">${mostRecent.lombardi} lbs</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>O'Conner:</span><span style="color: var(--primary); font-weight: 600;">${mostRecent.oconner} lbs</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between;">
-                                    <span>Wathan:</span><span style="color: var(--primary); font-weight: 600;">${mostRecent.wathan} lbs</span>
-                                </div>
-                            </div>
-                        </div>
-                    </details>
                 </div>
             `;
         }
